@@ -8,6 +8,21 @@ from dataclasses import dataclass
 import json
 from io import BytesIO
 
+# At the very top of app.py, after imports
+st.set_page_config(
+    page_title="E-commerce Order Processor",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Add this debug print
+print("Starting application...")
+
+# And modify your main() function start
+def main():
+    print("Entering main function...")
+    st.write("Application is starting...")  # This will show on the web interface
+
 # Page config
 st.set_page_config(
     page_title="E-commerce Order Processor",

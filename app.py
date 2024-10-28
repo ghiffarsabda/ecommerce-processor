@@ -38,12 +38,14 @@ if 'processed_files' not in st.session_state:
 
 # Database Class
 class ProductDatabase:
-    @st.cache_resource
     def __init__(self):
+        self.data = {}
+        self.load_data()
+
+    def load_data(self):
         try:
-            # Get credentials from Streamlit secrets
             creds = Credentials.from_service_account_info(
-                json.loads(st.secrets["google_credentials"]),
+                st.secrets["google_credentials"],
                 scopes=['https://www.googleapis.com/auth/spreadsheets.readonly']
             )
             
@@ -53,23 +55,21 @@ class ProductDatabase:
                 spreadsheetId=st.secrets["spreadsheet_id"],
                 range=st.secrets["range_name"]
             ).execute()
+            
             values = result.get('values', [])
-
             if not values:
                 st.error('No data found in database!')
-                self.data = {}
                 return
 
             self.data = {str(row[0]): row[1] for row in values[1:]}
             
         except Exception as e:
             st.error(f"Failed to load database: {str(e)}")
-            self.data = {}
 
-    def get_product_name(self, sku):
+    def get_product_name(self, sku: str) -> str:
         return self.data.get(str(sku), "Unknown")
 
-    def is_valid_sku(self, sku):
+    def is_valid_sku(self, sku: str) -> bool:
         return str(sku) in self.data
 # Shopee Module
 @dataclass
@@ -295,108 +295,93 @@ def main():
         'TikTok': TikTokProcessor(database)
     }
     
-    # Create two columns for layout
+    # Add session state if not exists
+    if 'processed_files' not in st.session_state:
+        st.session_state.processed_files = {}
+    
+    # Create two columns
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        # Platform selection
         platform = st.selectbox(
             "Select Platform",
             options=['Select Platform'] + list(processors.keys())
         )
         
-        # File uploader
-        uploaded_files = st.file_uploader(
-            "Upload Excel File(s)",
-            type=['xlsx'],
-            accept_multiple_files=True
+        uploaded_file = st.file_uploader(
+            "Upload Excel File",
+            type=['xlsx']
         )
         
-        if uploaded_files:
-            for uploaded_file in uploaded_files:
-                file_key = f"{platform}_{uploaded_file.name}"
-                if file_key not in st.session_state.processed_files:
-                    st.session_state.processed_files[file_key] = {
-                        'file': uploaded_file,
-                        'platform': platform
-                    }
-    
-    with col2:
-        # Clear button
-        if st.button("Clear All", type="secondary"):
-            st.session_state.processed_files = {}
-            st.experimental_rerun()
+        if uploaded_file and platform != 'Select Platform':
+            file_key = f"{platform}_{uploaded_file.name}"
+            if file_key not in st.session_state.processed_files:
+                st.session_state.processed_files[file_key] = {
+                    'file': uploaded_file,
+                    'platform': platform
+                }
     
     # Display uploaded files
     if st.session_state.processed_files:
-        st.subheader("Uploaded Files")
+        st.write("Uploaded Files:")
         for key, info in st.session_state.processed_files.items():
             st.write(f"- {info['file'].name} ({info['platform']})")
         
-        # Process button
-        if st.button("Process Files", type="primary"):
-            all_valid_products = []
+        if st.button("Process Files"):
+            process_files(st.session_state.processed_files, processors)
+        
+        if st.button("Clear All"):
+            st.session_state.processed_files = {}
+            st.experimental_rerun()
+
+def process_files(files, processors):
+    all_valid_products = []
+    
+    for file_key, info in files.items():
+        with st.expander(f"Results for {info['file'].name}", expanded=True):
+            processor = processors[info['platform']]
+            valid_df, invalid_df = processor.process_file(info['file'])
             
-            for file_key, info in st.session_state.processed_files.items():
-                with st.expander(f"Results for {info['file'].name}", expanded=True):
-                    processor = processors[info['platform']]
-                    valid_df, invalid_df = processor.process_file(info['file'])
-                    
-                    if not invalid_df.empty:
-                        st.markdown("##### Invalid Products")
-                        st.dataframe(
-                            invalid_df,
-                            use_container_width=True,
-                            hide_index=True
-                        )
-                    
-                    if not valid_df.empty:
-                        st.markdown("##### Valid Products")
-                        st.dataframe(
-                            valid_df,
-                            use_container_width=True,
-                            hide_index=True
-                        )
-                        all_valid_products.append(valid_df)
+            if not invalid_df.empty:
+                st.subheader("Invalid Products")
+                st.dataframe(invalid_df)
             
-            if all_valid_products:
-                st.markdown("### Combined Summary")
-                summary_df = pd.concat(all_valid_products)
-                summary_df = summary_df.groupby(['Kode SKU', 'Nama Produk'])['Jumlah'].sum().reset_index()
-                summary_df = summary_df.sort_values('Kode SKU')
-                
-                st.dataframe(
-                    summary_df,
-                    use_container_width=True,
-                    hide_index=True
-                )
-                
-                # Download buttons
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    # Excel download
-                    excel_buffer = BytesIO()
-                    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                        summary_df.to_excel(writer, index=False)
-                    excel_data = excel_buffer.getvalue()
-                    
-                    st.download_button(
-                        label="Download Excel",
-                        data=excel_data,
-                        file_name="summary.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-                
-                with col2:
-                    # CSV download
-                    csv = summary_df.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="Download CSV",
-                        data=csv,
-                        file_name="summary.csv",
-                        mime="text/csv"
-                    )
+            if not valid_df.empty:
+                st.subheader("Valid Products")
+                st.dataframe(valid_df)
+                all_valid_products.append(valid_df)
+    
+    if all_valid_products:
+        st.subheader("Combined Summary")
+        summary_df = pd.concat(all_valid_products)
+        summary_df = summary_df.groupby(['Kode SKU', 'Nama Produk'])['Jumlah'].sum().reset_index()
+        summary_df = summary_df.sort_values('Kode SKU')
+        
+        st.dataframe(summary_df)
+        
+        # Download buttons
+        col1, col2 = st.columns(2)
+        with col1:
+            csv = summary_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                "Download CSV",
+                csv,
+                "summary.csv",
+                "text/csv",
+                key='download-csv'
+            )
+        
+        with col2:
+            buffer = BytesIO()
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                summary_df.to_excel(writer, index=False)
+            st.download_button(
+                "Download Excel",
+                buffer.getvalue(),
+                "summary.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key='download-excel'
+            )
 
 if __name__ == "__main__":
     main()

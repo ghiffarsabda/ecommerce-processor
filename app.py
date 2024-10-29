@@ -36,41 +36,23 @@ st.markdown("""
 if 'processed_files' not in st.session_state:
     st.session_state.processed_files = {}
 
-# Database Class
 class ProductDatabase:
     def __init__(self):
-        self.data = {}
-        self.load_data()
-
-    def load_data(self):
         try:
-            creds = Credentials.from_service_account_info(
-                st.secrets["google_credentials"],
-                scopes=['https://www.googleapis.com/auth/spreadsheets.readonly']
-            )
-            
-            service = build('sheets', 'v4', credentials=creds)
-            sheet = service.spreadsheets()
-            result = sheet.values().get(
-                spreadsheetId=st.secrets["spreadsheet_id"],
-                range=st.secrets["range_name"]
-            ).execute()
-            
-            values = result.get('values', [])
-            if not values:
-                st.error('No data found in database!')
-                return
-
-            self.data = {str(row[0]): row[1] for row in values[1:]}
-            
+            # Read the local Excel file
+            df = pd.read_excel('dcw_products.xlsx')
+            # Convert first two columns to dictionary
+            self.data = dict(zip(df.iloc[:, 0].astype(str), df.iloc[:, 1]))
         except Exception as e:
             st.error(f"Failed to load database: {str(e)}")
+            self.data = {}
 
-    def get_product_name(self, sku: str) -> str:
+    def get_product_name(self, sku):
         return self.data.get(str(sku), "Unknown")
 
-    def is_valid_sku(self, sku: str) -> bool:
+    def is_valid_sku(self, sku):
         return str(sku) in self.data
+
 # Shopee Module
 @dataclass
 class ShopeeProduct:

@@ -299,43 +299,42 @@ def main():
     if 'files' not in st.session_state:
         st.session_state.files = {}  # {file_key: {'file': file_obj, 'platform': platform}}
 
-    # File upload section
-    st.subheader("Upload Files")
+    # File upload section with reorganized layout
+    st.header("Upload Files")
+    st.subheader("Select Platform")
+    platform = st.selectbox(
+        "",  # Empty label since we already have a subheader
+        ['Select Platform', 'Shopee', 'Tokopedia', 'TikTok']
+    )
     
-    # Create columns for file upload
-    col1, col2, col3 = st.columns([2, 2, 1])
+    uploaded_file = st.file_uploader(
+        "Browse files",
+        type=['xlsx']
+    )
+
+    # Show filename if file is uploaded
+    if uploaded_file:
+        st.text(uploaded_file.name)
     
-    with col1:
-        platform = st.selectbox(
-            "Select Platform",
-            ['Select Platform', 'Shopee', 'Tokopedia', 'TikTok']
-        )
-    
-    with col2:
-        uploaded_file = st.file_uploader(
-            "Choose Excel file",
-            type=['xlsx'],
-            key="file_uploader"
-        )
-    
-    with col3:
-        if st.button("Add File") and uploaded_file is not None and platform != 'Select Platform':
-            # Generate unique key for the file
-            file_key = f"{platform}_{uploaded_file.name}"
-            if file_key not in st.session_state.files:
-                # Store file in session state
-                file_data = uploaded_file.getvalue()
-                st.session_state.files[file_key] = {
-                    'file': file_data,
-                    'platform': platform,
-                    'filename': uploaded_file.name
-                }
-                st.success(f"Added {uploaded_file.name} for {platform}")
-            else:
-                st.warning("This file has already been added!")
+    # Add file button
+    if st.button("Add File") and uploaded_file is not None and platform != 'Select Platform':
+        # Generate unique key for the file
+        file_key = f"{platform}_{uploaded_file.name}"
+        if file_key not in st.session_state.files:
+            # Store file in session state
+            file_data = uploaded_file.getvalue()
+            st.session_state.files[file_key] = {
+                'file': file_data,
+                'platform': platform,
+                'filename': uploaded_file.name
+            }
+            st.success(f"Added {uploaded_file.name} for {platform}")
+        else:
+            st.warning("This file has already been added!")
 
     # Display added files
     if st.session_state.files:
+        st.markdown("---")
         st.subheader("Added Files")
         for file_key, file_info in list(st.session_state.files.items()):
             col1, col2 = st.columns([5, 1])
@@ -352,12 +351,13 @@ def main():
                 all_valid_products = []
                 all_invalid_products = []
                 
-                # Create tabs for displaying results
-                summary_tab, details_tab = st.tabs(["Summary", "File Details"])
+                # Create tabs - one Summary tab and one tab per file
+                tabs = ["Summary"] + [f"{info['filename']}" for info in st.session_state.files.values()]
+                current_tabs = st.tabs(tabs)
                 
-                with details_tab:
-                    # Process each file
-                    for file_key, file_info in st.session_state.files.items():
+                # Process each file and show in respective tabs
+                for idx, (file_key, file_info) in enumerate(st.session_state.files.items(), start=1):
+                    with current_tabs[idx]:  # idx+1 because Summary is at index 0
                         st.subheader(f"Results for {file_info['filename']}")
                         
                         try:
@@ -387,7 +387,8 @@ def main():
                         except Exception as e:
                             st.error(f"Error processing {file_info['filename']}: {str(e)}")
                 
-                with summary_tab:
+                # Summary tab content
+                with current_tabs[0]:
                     if all_valid_products:
                         # Combine and group all valid products
                         summary_df = pd.concat(all_valid_products)
@@ -455,8 +456,9 @@ def main():
     2. Upload your Excel file and click "Add File"
     3. Repeat steps 1-2 for all files you want to process
     4. Click "Process All Files" to analyze all uploaded files
-    5. View results in Summary and File Details tabs
-    6. Download the combined summary in your preferred format
+    5. View individual results in respective file tabs
+    6. View combined summary in Summary tab
+    7. Download the combined summary in your preferred format
     
     **Note:** Make sure your Excel files follow the expected format for each platform.
     """)

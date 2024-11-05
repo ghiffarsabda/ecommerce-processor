@@ -16,8 +16,8 @@ st.set_page_config(page_title="E-commerce Order Processor", layout="wide")
 class ProductDatabase:
     def __init__(self):
         try:
-            # Read the GitHub-hosted Excel file
-            df = pd.read_excel('https://raw.githubusercontent.com/your-username/your-repo/main/dcw_products.xlsx')
+            # Read the GitHub-hosted Excel file with correct raw URL format
+            df = pd.read_excel('https://raw.githubusercontent.com/ghiffarsabda/ecommerce-processor/main/dcw_products.xlsx')
             # Convert first two columns to dictionary
             self.data = dict(zip(df.iloc[:, 0].astype(str), df.iloc[:, 1]))
         except Exception as e:

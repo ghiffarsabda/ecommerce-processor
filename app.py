@@ -17,8 +17,8 @@ class ProductDatabase:
     def __init__(self):
         self.data = self.load_database()
     
-    @st.cache_data
     def load_database(self):
+        """Load the product database without caching"""
         try:
             # Read the GitHub-hosted Excel file
             df = pd.read_excel('https://raw.githubusercontent.com/your-username/your-repo/main/dcw_products.xlsx')
@@ -33,6 +33,11 @@ class ProductDatabase:
 
     def is_valid_sku(self, sku):
         return str(sku) in self.data
+
+@st.cache_data
+def initialize_database():
+    """Initialize the database with caching"""
+    return ProductDatabase()
 
 @dataclass
 class ShopeeProduct:
@@ -290,7 +295,7 @@ def main():
     st.title("E-commerce Order Processor")
     
     # Initialize database
-    database = ProductDatabase()
+    database = initialize_database()
     
     # Initialize processors
     processors = {

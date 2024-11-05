@@ -14,16 +14,19 @@ import base64
 st.set_page_config(page_title="E-commerce Order Processor", layout="wide")
 
 class ProductDatabase:
-    @st.cache_data
     def __init__(self):
+        self.data = self.load_database()
+    
+    @st.cache_data
+    def load_database(self):
         try:
             # Read the GitHub-hosted Excel file
             df = pd.read_excel('https://raw.githubusercontent.com/your-username/your-repo/main/dcw_products.xlsx')
             # Convert first two columns to dictionary
-            self.data = dict(zip(df.iloc[:, 0].astype(str), df.iloc[:, 1]))
+            return dict(zip(df.iloc[:, 0].astype(str), df.iloc[:, 1]))
         except Exception as e:
             st.error(f"Failed to load database: {str(e)}")
-            self.data = {}
+            return {}
 
     def get_product_name(self, sku):
         return self.data.get(str(sku), "Unknown")

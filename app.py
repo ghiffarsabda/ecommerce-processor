@@ -15,29 +15,20 @@ st.set_page_config(page_title="E-commerce Order Processor", layout="wide")
 
 class ProductDatabase:
     def __init__(self):
-        self.data = self.load_database()
-    
-    def load_database(self):
-        """Load the product database without caching"""
         try:
             # Read the GitHub-hosted Excel file
             df = pd.read_excel('https://raw.githubusercontent.com/your-username/your-repo/main/dcw_products.xlsx')
             # Convert first two columns to dictionary
-            return dict(zip(df.iloc[:, 0].astype(str), df.iloc[:, 1]))
+            self.data = dict(zip(df.iloc[:, 0].astype(str), df.iloc[:, 1]))
         except Exception as e:
             st.error(f"Failed to load database: {str(e)}")
-            return {}
+            self.data = {}
 
     def get_product_name(self, sku):
         return self.data.get(str(sku), "Unknown")
 
     def is_valid_sku(self, sku):
         return str(sku) in self.data
-
-@st.cache_data
-def initialize_database():
-    """Initialize the database with caching"""
-    return ProductDatabase()
 
 @dataclass
 class ShopeeProduct:
@@ -295,7 +286,7 @@ def main():
     st.title("E-commerce Order Processor")
     
     # Initialize database
-    database = initialize_database()
+    database = ProductDatabase()
     
     # Initialize processors
     processors = {

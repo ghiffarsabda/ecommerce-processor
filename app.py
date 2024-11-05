@@ -294,12 +294,16 @@ def main():
         'Tokopedia': TokopediaProcessor(database),
         'TikTok': TikTokProcessor(database)
     }
-    
+
+    # Initialize session state for files if it doesn't exist
+    if 'files' not in st.session_state:
+        st.session_state.files = {}  # {file_key: {'file': file_obj, 'platform': platform}}
+
     # File upload section
     st.subheader("Upload Files")
     
     # Create columns for file upload
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns([2, 2, 1])
     
     with col1:
         platform = st.selectbox(
@@ -314,64 +318,145 @@ def main():
             key="file_uploader"
         )
     
-    # Process file when uploaded
-    if uploaded_file is not None and platform != 'Select Platform':
-        st.subheader("Processing Results")
-        
-        # Process the file
-        processor = processors[platform]
-        valid_df, invalid_df = processor.process_file(uploaded_file)
-        
-        # Display results in tabs
-        tab1, tab2 = st.tabs(["Valid Products", "Invalid Products"])
-        
-        with tab1:
-            if not valid_df.empty:
-                st.write("Valid Products:")
-                st.dataframe(valid_df)
+    with col3:
+        if st.button("Add File") and uploaded_file is not None and platform != 'Select Platform':
+            # Generate unique key for the file
+            file_key = f"{platform}_{uploaded_file.name}"
+            if file_key not in st.session_state.files:
+                # Store file in session state
+                file_data = uploaded_file.getvalue()
+                st.session_state.files[file_key] = {
+                    'file': file_data,
+                    'platform': platform,
+                    'filename': uploaded_file.name
+                }
+                st.success(f"Added {uploaded_file.name} for {platform}")
             else:
-                st.info("No valid products found.")
-        
-        with tab2:
-            if not invalid_df.empty:
-                st.write("Invalid Products:")
-                st.dataframe(invalid_df)
-            else:
-                st.info("No invalid products found.")
-        
-        # Export options
-        if not valid_df.empty:
-            st.subheader("Export Options")
-            
-            col1, col2, col3 = st.columns(3)
-            
-            # Export to Excel
+                st.warning("This file has already been added!")
+
+    # Display added files
+    if st.session_state.files:
+        st.subheader("Added Files")
+        for file_key, file_info in list(st.session_state.files.items()):
+            col1, col2 = st.columns([5, 1])
             with col1:
-                excel_buffer = io.BytesIO()
-                valid_df.to_excel(excel_buffer, index=False)
-                excel_link = get_download_link(excel_buffer, "summary.xlsx", "Download Excel")
-                st.markdown(excel_link, unsafe_allow_html=True)
-            
-            # Export to PDF (A4)
+                st.text(f"{file_info['filename']} ({file_info['platform']})")
             with col2:
-                pdf_buffer_a4 = create_pdf(valid_df.values.tolist(), 'A4')
-                pdf_link_a4 = get_download_link(pdf_buffer_a4, "summary_a4.pdf", "Download PDF (A4)")
-                st.markdown(pdf_link_a4, unsafe_allow_html=True)
-            
-            # Export to PDF (A6)
-            with col3:
-                pdf_buffer_a6 = create_pdf(valid_df.values.tolist(), 'A6')
-                pdf_link_a6 = get_download_link(pdf_buffer_a6, "summary_a6.pdf", "Download PDF (A6)")
-                st.markdown(pdf_link_a6, unsafe_allow_html=True)
+                if st.button("Remove", key=f"remove_{file_key}"):
+                    del st.session_state.files[file_key]
+                    st.rerun()
+
+        # Process button
+        if st.button("Process All Files"):
+            if st.session_state.files:
+                all_valid_products = []
+                all_invalid_products = []
+                
+                # Create tabs for displaying results
+                summary_tab, details_tab = st.tabs(["Summary", "File Details"])
+                
+                with details_tab:
+                    # Process each file
+                    for file_key, file_info in st.session_state.files.items():
+                        st.subheader(f"Results for {file_info['filename']}")
+                        
+                        try:
+                            # Convert bytes back to file-like object
+                            file_obj = io.BytesIO(file_info['file'])
+                            
+                            # Get appropriate processor
+                            processor = processors[file_info['platform']]
+                            
+                            # Process file
+                            valid_df, invalid_df = processor.process_file(file_obj)
+                            
+                            if not valid_df.empty:
+                                all_valid_products.append(valid_df)
+                                
+                            # Display invalid products if any
+                            if not invalid_df.empty:
+                                st.error("Invalid Products Found:")
+                                st.dataframe(invalid_df)
+                                all_invalid_products.append(invalid_df)
+                            
+                            # Display valid products
+                            if not valid_df.empty:
+                                st.success("Valid Products:")
+                                st.dataframe(valid_df)
+                            
+                        except Exception as e:
+                            st.error(f"Error processing {file_info['filename']}: {str(e)}")
+                
+                with summary_tab:
+                    if all_valid_products:
+                        # Combine and group all valid products
+                        summary_df = pd.concat(all_valid_products)
+                        summary_df = summary_df.groupby(['Kode SKU', 'Nama Produk'])['Jumlah'].sum().reset_index()
+                        summary_df = summary_df.sort_values('Kode SKU')
+                        
+                        st.success("Summary of All Valid Products")
+                        st.dataframe(summary_df)
+                        
+                        # Export options
+                        st.subheader("Export Options")
+                        
+                        col1, col2, col3 = st.columns(3)
+                        
+                        # Export to Excel
+                        with col1:
+                            excel_buffer = io.BytesIO()
+                            with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                                summary_df.to_excel(writer, index=False)
+                            excel_data = excel_buffer.getvalue()
+                            st.download_button(
+                                label="Download Excel",
+                                data=excel_data,
+                                file_name="summary.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            )
+                        
+                        # Export to PDF A4
+                        with col2:
+                            pdf_buffer_a4 = create_pdf(summary_df.values.tolist(), 'A4')
+                            st.download_button(
+                                label="Download PDF (A4)",
+                                data=pdf_buffer_a4.getvalue(),
+                                file_name="summary_a4.pdf",
+                                mime="application/pdf"
+                            )
+                        
+                        # Export to PDF A6
+                        with col3:
+                            pdf_buffer_a6 = create_pdf(summary_df.values.tolist(), 'A6')
+                            st.download_button(
+                                label="Download PDF (A6)",
+                                data=pdf_buffer_a6.getvalue(),
+                                file_name="summary_a6.pdf",
+                                mime="application/pdf"
+                            )
+                    
+                    if all_invalid_products:
+                        st.error("Summary of All Invalid Products")
+                        invalid_summary = pd.concat(all_invalid_products)
+                        st.dataframe(invalid_summary)
+            else:
+                st.warning("No files to process!")
+
+        # Clear all button
+        if st.button("Clear All Files"):
+            st.session_state.files = {}
+            st.rerun()
 
     # Add footer with instructions
     st.markdown("---")
     st.markdown("""
     ### Instructions:
     1. Select the e-commerce platform (Shopee, Tokopedia, or TikTok)
-    2. Upload your Excel file containing order data
-    3. View the processed results in the Valid and Invalid Products tabs
-    4. Download the summary in your preferred format (Excel, PDF A4, or PDF A6)
+    2. Upload your Excel file and click "Add File"
+    3. Repeat steps 1-2 for all files you want to process
+    4. Click "Process All Files" to analyze all uploaded files
+    5. View results in Summary and File Details tabs
+    6. Download the combined summary in your preferred format
     
     **Note:** Make sure your Excel files follow the expected format for each platform.
     """)

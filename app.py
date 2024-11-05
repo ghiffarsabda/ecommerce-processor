@@ -417,7 +417,7 @@ def main():
                                 label="Download Excel",
                                 data=excel_data,
                                 file_name="summary.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 use_container_width=True
                             )
                         
@@ -428,7 +428,7 @@ def main():
                                 label="Download PDF (A4)",
                                 data=pdf_buffer_a4.getvalue(),
                                 file_name="summary_a4.pdf",
-                                mime="application/pdf"
+                                mime="application/pdf",
                                 use_container_width=True
                             )
                         
@@ -439,7 +439,7 @@ def main():
                                 label="Download PDF (A6)",
                                 data=pdf_buffer_a6.getvalue(),
                                 file_name="summary_a6.pdf",
-                                mime="application/pdf"
+                                mime="application/pdf",
                                 use_container_width=True
                             )
                     

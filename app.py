@@ -1,46 +1,24 @@
 import streamlit as st
 import pandas as pd
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-import re
-from typing import Tuple
 from dataclasses import dataclass
-import json
-from io import BytesIO
+import re
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, A6
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+from reportlab.lib.units import mm
+import io
+from typing import Tuple
+import base64
 
-# Page config
-st.set_page_config(
-    page_title="E-commerce Order Processor",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# Custom styling
-st.markdown("""
-    <style>
-    .main {
-        background-color: #F8F9FA;
-    }
-    .stButton>button {
-        background-color: #4285F4;
-        color: white;
-    }
-    .stButton>button:hover {
-        background-color: #357ABD;
-        color: white;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-# Initialize session state
-if 'processed_files' not in st.session_state:
-    st.session_state.processed_files = {}
+# Set page config
+st.set_page_config(page_title="E-commerce Order Processor", layout="wide")
 
 class ProductDatabase:
+    @st.cache_data
     def __init__(self):
         try:
-            # Read the local Excel file
-            df = pd.read_excel('dcw_products.xlsx')
+            # Read the GitHub-hosted Excel file
+            df = pd.read_excel('https://raw.githubusercontent.com/your-username/your-repo/main/dcw_products.xlsx')
             # Convert first two columns to dictionary
             self.data = dict(zip(df.iloc[:, 0].astype(str), df.iloc[:, 1]))
         except Exception as e:
@@ -53,7 +31,6 @@ class ProductDatabase:
     def is_valid_sku(self, sku):
         return str(sku) in self.data
 
-# Shopee Module
 @dataclass
 class ShopeeProduct:
     nama_produk: str
@@ -67,6 +44,7 @@ class ShopeeProcessor:
 
     def parse_product_info(self, text: str) -> list[ShopeeProduct]:
         products = []
+        
         if '[1]' in text:
             items = re.split(r'\[\d+\]', text)
             items = [item.strip() for item in items if item.strip()]
@@ -91,6 +69,7 @@ class ShopeeProcessor:
             except Exception as e:
                 st.error(f"Error parsing Shopee product: {e}")
                 continue
+                
         return products
 
     def process_file(self, file) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -134,21 +113,18 @@ class ShopeeProcessor:
         except Exception as e:
             st.error(f"Error processing Shopee file: {str(e)}")
             return pd.DataFrame(), pd.DataFrame()
-# Tokopedia Module
+
 class TokopediaProcessor:
     def __init__(self, database):
         self.database = database
 
     def process_file(self, file) -> Tuple[pd.DataFrame, pd.DataFrame]:
         try:
-            # Read Excel file, skip first 4 rows
             df = pd.read_excel(file, skiprows=4)
             
-            # Extract relevant columns (B=1, C=2, E=4)
             order_data = df.iloc[:, [1, 2, 4]].copy()
             order_data.columns = ['SKU', 'Nama_Produk', 'Jumlah']
             
-            # Clean and convert SKU to string, handle NaN values
             order_data['SKU'] = order_data['SKU'].fillna('')
             order_data['SKU'] = order_data['SKU'].astype(str).str.strip()
             order_data['SKU'] = order_data['SKU'].apply(lambda x: x.split('.')[0] if '.' in x else x)
@@ -156,7 +132,6 @@ class TokopediaProcessor:
             valid_products = []
             invalid_products = []
             
-            # Process each row
             for _, row in order_data.iterrows():
                 sku = row['SKU']
                 nama_produk = row['Nama_Produk']
@@ -174,11 +149,9 @@ class TokopediaProcessor:
                         'Jumlah': jumlah
                     })
             
-            # Create DataFrames
             valid_df = pd.DataFrame(valid_products)
             invalid_df = pd.DataFrame(invalid_products)
             
-            # Group and sort valid products
             if not valid_df.empty:
                 valid_df = valid_df.groupby(['Kode SKU', 'Nama Produk'])['Jumlah'].sum().reset_index()
                 valid_df = valid_df.sort_values('Kode SKU')
@@ -192,32 +165,22 @@ class TokopediaProcessor:
             st.error(f"Error processing Tokopedia file: {str(e)}")
             return pd.DataFrame(), pd.DataFrame()
 
-# TikTok Module
 class TikTokProcessor:
     def __init__(self, database):
         self.database = database
 
     def process_file(self, file) -> Tuple[pd.DataFrame, pd.DataFrame]:
         try:
-            # Read Excel file without headers
-            df = pd.read_excel(
-                file,
-                header=None,
-                na_filter=False
-            )
-            
-            # Skip first two rows
+            df = pd.read_excel(file, header=None, na_filter=False)
             data = df.iloc[2:].copy()
             
-            # Create DataFrame with specific columns
             order_data = pd.DataFrame({
-                'SKU': data.iloc[:, 6],          # Column G
-                'Nama_Produk': data.iloc[:, 7],   # Column H
-                'Variasi': data.iloc[:, 8],       # Column I
-                'Jumlah': data.iloc[:, 9]         # Column J
+                'SKU': data.iloc[:, 6],
+                'Nama_Produk': data.iloc[:, 7],
+                'Variasi': data.iloc[:, 8],
+                'Jumlah': data.iloc[:, 9]
             })
             
-            # Clean SKUs and handle missing values
             order_data['SKU'] = order_data['SKU'].astype(str)
             order_data['SKU'] = order_data['SKU'].apply(lambda x: str(x).strip().strip("'"))
             order_data['Jumlah'] = pd.to_numeric(order_data['Jumlah'], errors='coerce').fillna(0)
@@ -247,11 +210,9 @@ class TikTokProcessor:
                         'Jumlah': jumlah
                     })
             
-            # Create DataFrames
             valid_df = pd.DataFrame(valid_products)
             invalid_df = pd.DataFrame(invalid_products)
             
-            # Group and sort valid products
             if not valid_df.empty:
                 valid_df = valid_df.groupby(['Kode SKU', 'Nama Produk'])['Jumlah'].sum().reset_index()
                 valid_df = valid_df.sort_values('Kode SKU')
@@ -264,6 +225,64 @@ class TikTokProcessor:
         except Exception as e:
             st.error(f"Error processing TikTok file: {str(e)}")
             return pd.DataFrame(), pd.DataFrame()
+
+def create_pdf(data, size='A4'):
+    """Create PDF from summary data"""
+    buffer = io.BytesIO()
+    
+    # Set page size
+    if size == 'A4':
+        pagesize = A4
+        margin = 25 * mm
+    else:  # A6
+        pagesize = A6
+        margin = 10 * mm
+
+    # Create PDF document
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=pagesize,
+        rightMargin=margin,
+        leftMargin=margin,
+        topMargin=margin,
+        bottomMargin=margin
+    )
+
+    # Prepare data
+    table_data = [['SKU', 'Product Name', 'Quantity']]  # Headers
+    table_data.extend(data)
+
+    # Calculate column widths
+    available_width = pagesize[0] - 2*margin
+    col_widths = [available_width*0.2, available_width*0.6, available_width*0.2]
+
+    # Create table
+    table = Table(table_data, colWidths=col_widths)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12 if size == 'A4' else 8),
+        ('FONTSIZE', (0, 1), (-1, -1), 10 if size == 'A4' else 6),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12 if size == 'A4' else 6),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+    ]))
+
+    # Build PDF
+    doc.build([table])
+    buffer.seek(0)
+    return buffer
+
+def get_download_link(buffer, filename, text):
+    """Generate a download link for a file"""
+    b64 = base64.b64encode(buffer.getvalue()).decode()
+    return f'<a href="data:application/octet-stream;base64,{b64}" download="{filename}">{text}</a>'
+
 def main():
     st.title("E-commerce Order Processor")
     
@@ -277,93 +296,86 @@ def main():
         'TikTok': TikTokProcessor(database)
     }
     
-    # Add session state if not exists
-    if 'processed_files' not in st.session_state:
-        st.session_state.processed_files = {}
+    # File upload section
+    st.subheader("Upload Files")
     
-    # Create two columns
-    col1, col2 = st.columns([2, 1])
+    # Create columns for file upload
+    col1, col2 = st.columns(2)
     
     with col1:
         platform = st.selectbox(
             "Select Platform",
-            options=['Select Platform'] + list(processors.keys())
+            ['Select Platform', 'Shopee', 'Tokopedia', 'TikTok']
         )
-        
+    
+    with col2:
         uploaded_file = st.file_uploader(
-            "Upload Excel File",
-            type=['xlsx']
+            "Choose Excel file",
+            type=['xlsx'],
+            key="file_uploader"
         )
-        
-        if uploaded_file and platform != 'Select Platform':
-            file_key = f"{platform}_{uploaded_file.name}"
-            if file_key not in st.session_state.processed_files:
-                st.session_state.processed_files[file_key] = {
-                    'file': uploaded_file,
-                    'platform': platform
-                }
     
-    # Display uploaded files
-    if st.session_state.processed_files:
-        st.write("Uploaded Files:")
-        for key, info in st.session_state.processed_files.items():
-            st.write(f"- {info['file'].name} ({info['platform']})")
+    # Process file when uploaded
+    if uploaded_file is not None and platform != 'Select Platform':
+        st.subheader("Processing Results")
         
-        if st.button("Process Files"):
-            process_files(st.session_state.processed_files, processors)
+        # Process the file
+        processor = processors[platform]
+        valid_df, invalid_df = processor.process_file(uploaded_file)
         
-        if st.button("Clear All"):
-            st.session_state.processed_files = {}
-            st.experimental_rerun()
-
-def process_files(files, processors):
-    all_valid_products = []
-    
-    for file_key, info in files.items():
-        with st.expander(f"Results for {info['file'].name}", expanded=True):
-            processor = processors[info['platform']]
-            valid_df, invalid_df = processor.process_file(info['file'])
-            
-            if not invalid_df.empty:
-                st.subheader("Invalid Products")
-                st.dataframe(invalid_df)
-            
+        # Display results in tabs
+        tab1, tab2 = st.tabs(["Valid Products", "Invalid Products"])
+        
+        with tab1:
             if not valid_df.empty:
-                st.subheader("Valid Products")
+                st.write("Valid Products:")
                 st.dataframe(valid_df)
-                all_valid_products.append(valid_df)
+            else:
+                st.info("No valid products found.")
+        
+        with tab2:
+            if not invalid_df.empty:
+                st.write("Invalid Products:")
+                st.dataframe(invalid_df)
+            else:
+                st.info("No invalid products found.")
+        
+        # Export options
+        if not valid_df.empty:
+            st.subheader("Export Options")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            # Export to Excel
+            with col1:
+                excel_buffer = io.BytesIO()
+                valid_df.to_excel(excel_buffer, index=False)
+                excel_link = get_download_link(excel_buffer, "summary.xlsx", "Download Excel")
+                st.markdown(excel_link, unsafe_allow_html=True)
+            
+            # Export to PDF (A4)
+            with col2:
+                pdf_buffer_a4 = create_pdf(valid_df.values.tolist(), 'A4')
+                pdf_link_a4 = get_download_link(pdf_buffer_a4, "summary_a4.pdf", "Download PDF (A4)")
+                st.markdown(pdf_link_a4, unsafe_allow_html=True)
+            
+            # Export to PDF (A6)
+            with col3:
+                pdf_buffer_a6 = create_pdf(valid_df.values.tolist(), 'A6')
+                pdf_link_a6 = get_download_link(pdf_buffer_a6, "summary_a6.pdf", "Download PDF (A6)")
+                st.markdown(pdf_link_a6, unsafe_allow_html=True)
+
+    # Add footer with instructions
+    st.markdown("---")
+    st.markdown("""
+    ### Instructions:
+    1. Select the e-commerce platform (Shopee, Tokopedia, or TikTok)
+    2. Upload your Excel file containing order data
+    3. View the processed results in the Valid and Invalid Products tabs
+    4. Download the summary in your preferred format (Excel, PDF A4, or PDF A6)
     
-    if all_valid_products:
-        st.subheader("Combined Summary")
-        summary_df = pd.concat(all_valid_products)
-        summary_df = summary_df.groupby(['Kode SKU', 'Nama Produk'])['Jumlah'].sum().reset_index()
-        summary_df = summary_df.sort_values('Kode SKU')
-        
-        st.dataframe(summary_df)
-        
-        # Download buttons
-        col1, col2 = st.columns(2)
-        with col1:
-            csv = summary_df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                "Download CSV",
-                csv,
-                "summary.csv",
-                "text/csv",
-                key='download-csv'
-            )
-        
-        with col2:
-            buffer = BytesIO()
-            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                summary_df.to_excel(writer, index=False)
-            st.download_button(
-                "Download Excel",
-                buffer.getvalue(),
-                "summary.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key='download-excel'
-            )
+    **Note:** Make sure your Excel files follow the expected format for each platform.
+    """)
 
 if __name__ == "__main__":
     main()

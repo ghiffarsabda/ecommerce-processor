@@ -401,7 +401,11 @@ def main():
                         # Export options
                         st.subheader("Export Options")
                         
-                        col1, col2, col3 = st.columns(3)
+                        # Create a container with custom spacing
+                        export_container = st.container()
+                        with export_container:
+                            # Use custom width ratios and add empty columns for spacing
+                            col1, space1, col2, space2, col3 = st.columns([1, 0.1, 1, 0.1, 1])
                         
                         # Export to Excel
                         with col1:
@@ -414,6 +418,7 @@ def main():
                                 data=excel_data,
                                 file_name="summary.xlsx",
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                use_container_width=True
                             )
                         
                         # Export to PDF A4
@@ -424,6 +429,7 @@ def main():
                                 data=pdf_buffer_a4.getvalue(),
                                 file_name="summary_a4.pdf",
                                 mime="application/pdf"
+                                use_container_width=True
                             )
                         
                         # Export to PDF A6
@@ -434,6 +440,7 @@ def main():
                                 data=pdf_buffer_a6.getvalue(),
                                 file_name="summary_a6.pdf",
                                 mime="application/pdf"
+                                use_container_width=True
                             )
                     
                     if all_invalid_products:

@@ -395,7 +395,7 @@ def main():
                         summary_df = summary_df.groupby(['Kode SKU', 'Nama Produk'])['Jumlah'].sum().reset_index()
                         summary_df = summary_df.sort_values('Kode SKU')
                         
-                        st.success("Summary of All Valid Products")
+                        st.markdown("### :green[Summary of All Valid Products]")
                         st.dataframe(summary_df)
                         
                         # Export options
@@ -442,9 +442,13 @@ def main():
                                 mime="application/pdf",
                                 use_container_width=True
                             )
+                        # Add divider with some spacing
+                        st.markdown("<br>", unsafe_allow_html=True)  # Add some space
+                        st.markdown("---")  # Add divider
+                        st.markdown("<br>", unsafe_allow_html=True)  # Add some space
                     
                     if all_invalid_products:
-                        st.error("Summary of All Invalid Products")
+                        st.markdown("### :red[Summary of All Invalid Products]")
                         invalid_summary = pd.concat(all_invalid_products)
                         st.dataframe(invalid_summary)
             else:

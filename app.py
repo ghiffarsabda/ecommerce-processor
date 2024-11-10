@@ -119,7 +119,7 @@ class TokopediaProcessor:
 
     def process_file(self, file) -> Tuple[pd.DataFrame, pd.DataFrame]:
         try:
-            df = pd.read_excel(file, skiprows=3)
+            df = pd.read_excel(file, skiprows=4)
             
             order_data = df.iloc[:, [1, 2, 4]].copy()
             order_data.columns = ['SKU', 'Nama_Produk', 'Jumlah']

@@ -305,6 +305,7 @@ def main():
     platform = st.selectbox(
     label="Choose your e-commerce platform",
     options=['Shopee', 'Tokopedia', 'TikTok']
+    )
     
     uploaded_file = st.file_uploader(
         "Browse files",

@@ -303,9 +303,8 @@ def main():
     st.header("Upload Files")
     st.subheader("Select Platform")
     platform = st.selectbox(
-        "",  # Empty label since we already have a subheader
-        ['Select Platform', 'Shopee', 'Tokopedia', 'TikTok']
-    )
+    label="Choose your e-commerce platform",
+    options=['Shopee', 'Tokopedia', 'TikTok']
     
     uploaded_file = st.file_uploader(
         "Browse files",

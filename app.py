@@ -10,6 +10,7 @@ import io
 from typing import Tuple
 import base64
 from datetime import datetime
+import json
 
 # Set page config
 st.set_page_config(page_title="E-commerce Order Processor", layout="wide")
@@ -473,25 +474,29 @@ def main():
                         joined_valid_df = joined_valid_df[['DateToday', 'Kode SKU', 'Nama Produk', 'Jumlah', 'File Name']]
                         st.success("All Valid Products (Detailed View)")
                         st.dataframe(joined_valid_df)
+
+                        # Create copy button for valid products
+                        # Convert DataFrame to tab-separated values
+                        valid_tsv = (
+                            joined_valid_df.to_csv(index=False, sep='\t')
+                            .replace('\n', '\r\n')  # Use Windows-style line endings for better compatibility
+                        )
                         
-                        # Add export buttons for joined details
-                        st.subheader("Export Joined Details")
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            excel_buffer = io.BytesIO()
-                            with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                                joined_valid_df.to_excel(writer, index=False, sheet_name='Valid Products')
-                                if all_invalid_details:
-                                    joined_invalid_df = pd.concat(all_invalid_details, ignore_index=True)
-                                    joined_invalid_df.to_excel(writer, index=False, sheet_name='Invalid Products')
-                            
-                            st.download_button(
-                                label="Download Detailed Excel",
-                                data=excel_buffer.getvalue(),
-                                file_name="detailed_summary.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        st.button(
+                            "Copy Valid Products to Clipboard",
+                            key="copy_valid",
+                            help="Click to copy the valid products data in a format suitable for Google Sheets",
+                            on_click=lambda: st.write(
+                                f'<textarea id="valid-products-data" style="position: absolute; left: -9999px;">{valid_tsv}</textarea>'
+                                '<script>'
+                                'const validTextArea = document.getElementById("valid-products-data");'
+                                'validTextArea.select();'
+                                'document.execCommand("copy");'
+                                'validTextArea.remove();'
+                                '</script>',
+                                unsafe_allow_html=True
                             )
+                        )
                     
                     # Display joined invalid products
                     if all_invalid_details:
@@ -499,6 +504,29 @@ def main():
                         joined_invalid_df = pd.concat(all_invalid_details, ignore_index=True)
                         st.error("All Invalid Products (Detailed View)")
                         st.dataframe(joined_invalid_df)
+
+                        # Create copy button for invalid products
+                        # Convert DataFrame to tab-separated values
+                        invalid_tsv = (
+                            joined_invalid_df.to_csv(index=False, sep='\t')
+                            .replace('\n', '\r\n')  # Use Windows-style line endings for better compatibility
+                        )
+                        
+                        st.button(
+                            "Copy Invalid Products to Clipboard",
+                            key="copy_invalid",
+                            help="Click to copy the invalid products data in a format suitable for Google Sheets",
+                            on_click=lambda: st.write(
+                                f'<textarea id="invalid-products-data" style="position: absolute; left: -9999px;">{invalid_tsv}</textarea>'
+                                '<script>'
+                                'const invalidTextArea = document.getElementById("invalid-products-data");'
+                                'invalidTextArea.select();'
+                                'document.execCommand("copy");'
+                                'invalidTextArea.remove();'
+                                '</script>',
+                                unsafe_allow_html=True
+                            )
+                        )
             
             else:
                 st.warning("No files to process!")

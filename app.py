@@ -474,29 +474,6 @@ def main():
                         joined_valid_df = joined_valid_df[['DateToday', 'Kode SKU', 'Nama Produk', 'Jumlah', 'File Name']]
                         st.success("All Valid Products (Detailed View)")
                         st.dataframe(joined_valid_df)
-
-                        # Create copy button for valid products
-                        # Convert DataFrame to tab-separated values
-                        valid_tsv = (
-                            joined_valid_df.to_csv(index=False, sep='\t')
-                            .replace('\n', '\r\n')  # Use Windows-style line endings for better compatibility
-                        )
-                        
-                        st.button(
-                            "Copy Valid Products to Clipboard",
-                            key="copy_valid",
-                            help="Click to copy the valid products data in a format suitable for Google Sheets",
-                            on_click=lambda: st.write(
-                                f'<textarea id="valid-products-data" style="position: absolute; left: -9999px;">{valid_tsv}</textarea>'
-                                '<script>'
-                                'const validTextArea = document.getElementById("valid-products-data");'
-                                'validTextArea.select();'
-                                'document.execCommand("copy");'
-                                'validTextArea.remove();'
-                                '</script>',
-                                unsafe_allow_html=True
-                            )
-                        )
                     
                     # Display joined invalid products
                     if all_invalid_details:
@@ -505,29 +482,6 @@ def main():
                         st.error("All Invalid Products (Detailed View)")
                         st.dataframe(joined_invalid_df)
 
-                        # Create copy button for invalid products
-                        # Convert DataFrame to tab-separated values
-                        invalid_tsv = (
-                            joined_invalid_df.to_csv(index=False, sep='\t')
-                            .replace('\n', '\r\n')  # Use Windows-style line endings for better compatibility
-                        )
-                        
-                        st.button(
-                            "Copy Invalid Products to Clipboard",
-                            key="copy_invalid",
-                            help="Click to copy the invalid products data in a format suitable for Google Sheets",
-                            on_click=lambda: st.write(
-                                f'<textarea id="invalid-products-data" style="position: absolute; left: -9999px;">{invalid_tsv}</textarea>'
-                                '<script>'
-                                'const invalidTextArea = document.getElementById("invalid-products-data");'
-                                'invalidTextArea.select();'
-                                'document.execCommand("copy");'
-                                'invalidTextArea.remove();'
-                                '</script>',
-                                unsafe_allow_html=True
-                            )
-                        )
-            
             else:
                 st.warning("No files to process!")
 

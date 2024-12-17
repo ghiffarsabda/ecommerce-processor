@@ -9,6 +9,7 @@ from reportlab.lib.units import mm
 import io
 from typing import Tuple
 import base64
+from datetime import datetime
 
 # Set page config
 st.set_page_config(page_title="E-commerce Order Processor", layout="wide")
@@ -101,7 +102,6 @@ class ShopeeProcessor:
             invalid_df = pd.DataFrame(invalid_products)
             
             if not valid_df.empty:
-                valid_df = valid_df.groupby(['Kode SKU', 'Nama Produk'])['Jumlah'].sum().reset_index()
                 valid_df = valid_df.sort_values('Kode SKU')
             
             if not invalid_df.empty:
@@ -152,7 +152,6 @@ class TokopediaProcessor:
             invalid_df = pd.DataFrame(invalid_products)
             
             if not valid_df.empty:
-                valid_df = valid_df.groupby(['Kode SKU', 'Nama Produk'])['Jumlah'].sum().reset_index()
                 valid_df = valid_df.sort_values('Kode SKU')
             
             if not invalid_df.empty:
@@ -213,7 +212,6 @@ class TikTokProcessor:
             invalid_df = pd.DataFrame(invalid_products)
             
             if not valid_df.empty:
-                valid_df = valid_df.groupby(['Kode SKU', 'Nama Produk'])['Jumlah'].sum().reset_index()
                 valid_df = valid_df.sort_values('Kode SKU')
             
             if not invalid_df.empty:
@@ -303,8 +301,8 @@ def main():
     st.header("Upload Files")
     st.subheader("Select Platform")
     platform = st.selectbox(
-    label="Choose your e-commerce platform",
-    options=['Shopee', 'Tokopedia', 'TikTok']
+        label="Choose your e-commerce platform",
+        options=['Shopee', 'Tokopedia', 'TikTok']
     )
     
     uploaded_file = st.file_uploader(
@@ -350,14 +348,16 @@ def main():
             if st.session_state.files:
                 all_valid_products = []
                 all_invalid_products = []
+                all_valid_details = []
+                all_invalid_details = []
                 
-                # Create tabs - one Summary tab and one tab per file
-                tabs = ["Summary"] + [f"{info['filename']}" for info in st.session_state.files.values()]
+                # Create tabs - one Summary tab, one Joined Details tab, and one tab per file
+                tabs = ["Summary", "Joined Details"] + [f"{info['filename']}" for info in st.session_state.files.values()]
                 current_tabs = st.tabs(tabs)
                 
                 # Process each file and show in respective tabs
-                for idx, (file_key, file_info) in enumerate(st.session_state.files.items(), start=1):
-                    with current_tabs[idx]:  # idx+1 because Summary is at index 0
+                for idx, (file_key, file_info) in enumerate(st.session_state.files.items(), start=2):
+                    with current_tabs[idx]:
                         st.subheader(f"Results for {file_info['filename']}")
                         
                         try:
@@ -371,13 +371,28 @@ def main():
                             valid_df, invalid_df = processor.process_file(file_obj)
                             
                             if not valid_df.empty:
-                                all_valid_products.append(valid_df)
+                                # Add to summary
+                                summary_df = valid_df.copy()
+                                summary_df = summary_df.groupby(['Kode SKU', 'Nama Produk'])['Jumlah'].sum().reset_index()
+                                all_valid_products.append(summary_df)
                                 
-                            # Display invalid products if any
+                                # Add to detailed view with filename
+                                detailed_df = valid_df.copy()
+                                detailed_df['DateToday'] = datetime.now().strftime('%Y-%m-%d')
+                                detailed_df['File Name'] = file_info['filename']
+                                all_valid_details.append(detailed_df)
+                            
+                            # Handle invalid products
                             if not invalid_df.empty:
                                 st.error("Invalid Products Found:")
                                 st.dataframe(invalid_df)
                                 all_invalid_products.append(invalid_df)
+                                
+                                # Add to detailed invalid view with filename
+                                detailed_invalid_df = invalid_df.copy()
+                                detailed_invalid_df['DateToday'] = datetime.now().strftime('%Y-%m-%d')
+                                detailed_invalid_df['File Name'] = file_info['filename']
+                                all_invalid_details.append(detailed_invalid_df)
                             
                             # Display valid products
                             if not valid_df.empty:
@@ -404,53 +419,87 @@ def main():
                         # Create a container with custom spacing
                         export_container = st.container()
                         with export_container:
-                            # Use custom width ratios and add empty columns for spacing
                             col1, space1, col2, space2, col3 = st.columns([1, 0.1, 1, 0.1, 1])
                         
-                        # Export to Excel
+                            # Export to Excel
+                            with col1:
+                                excel_buffer = io.BytesIO()
+                                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                                    summary_df.to_excel(writer, index=False)
+                                excel_data = excel_buffer.getvalue()
+                                st.download_button(
+                                    label="Download Excel",
+                                    data=excel_data,
+                                    file_name="summary.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    use_container_width=True
+                                )
+                            
+                            # Export to PDF A4
+                            with col2:
+                                pdf_buffer_a4 = create_pdf(summary_df.values.tolist(), 'A4')
+                                st.download_button(
+                                    label="Download PDF (A4)",
+                                    data=pdf_buffer_a4.getvalue(),
+                                    file_name="summary_a4.pdf",
+                                    mime="application/pdf",
+                                    use_container_width=True
+                                )
+                            
+                            # Export to PDF A6
+                            with col3:
+                                pdf_buffer_a6 = create_pdf(summary_df.values.tolist(), 'A6')
+                                st.download_button(
+                                    label="Download PDF (A6)",
+                                    data=pdf_buffer_a6.getvalue(),
+                                    file_name="summary_a6.pdf",
+                                    mime="application/pdf",
+                                    use_container_width=True
+                                )
+                
+                        if all_invalid_products:
+                            st.markdown("---")
+                            st.error("Summary of All Invalid Products")
+                            invalid_summary = pd.concat(all_invalid_products)
+                            st.dataframe(invalid_summary)
+
+                # Joined Details tab content
+                with current_tabs[1]:
+                    st.subheader("Joined Details")
+                    
+                    # Display joined valid products
+                    if all_valid_details:
+                        joined_valid_df = pd.concat(all_valid_details, ignore_index=True)
+                        joined_valid_df = joined_valid_df[['DateToday', 'Kode SKU', 'Nama Produk', 'Jumlah', 'File Name']]
+                        st.success("All Valid Products (Detailed View)")
+                        st.dataframe(joined_valid_df)
+                        
+                        # Add export buttons for joined details
+                        st.subheader("Export Joined Details")
+                        col1, col2 = st.columns(2)
+                        
                         with col1:
                             excel_buffer = io.BytesIO()
                             with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                                summary_df.to_excel(writer, index=False)
-                            excel_data = excel_buffer.getvalue()
+                                joined_valid_df.to_excel(writer, index=False, sheet_name='Valid Products')
+                                if all_invalid_details:
+                                    joined_invalid_df = pd.concat(all_invalid_details, ignore_index=True)
+                                    joined_invalid_df.to_excel(writer, index=False, sheet_name='Invalid Products')
+                            
                             st.download_button(
-                                label="Download Excel",
-                                data=excel_data,
-                                file_name="summary.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                use_container_width=True
+                                label="Download Detailed Excel",
+                                data=excel_buffer.getvalue(),
+                                file_name="detailed_summary.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
-                        
-                        # Export to PDF A4
-                        with col2:
-                            pdf_buffer_a4 = create_pdf(summary_df.values.tolist(), 'A4')
-                            st.download_button(
-                                label="Download PDF (A4)",
-                                data=pdf_buffer_a4.getvalue(),
-                                file_name="summary_a4.pdf",
-                                mime="application/pdf",
-                                use_container_width=True
-                            )
-                        
-                        # Export to PDF A6
-                        with col3:
-                            pdf_buffer_a6 = create_pdf(summary_df.values.tolist(), 'A6')
-                            st.download_button(
-                                label="Download PDF (A6)",
-                                data=pdf_buffer_a6.getvalue(),
-                                file_name="summary_a6.pdf",
-                                mime="application/pdf",
-                                use_container_width=True
-                            )
-                        # Add divider with some spacing
-                        st.markdown("<br>", unsafe_allow_html=True)  # Add some space
-                        st.markdown("---")  # Add divider
-                        st.markdown("<br>", unsafe_allow_html=True)  # Add some space
                     
-                    if all_invalid_products:
-                        st.error("Summary of All Invalid Products")
-                        invalid_summary = pd.concat(all_invalid_products)
-                        st.dataframe(invalid_summary)
+                    # Display joined invalid products
+                    if all_invalid_details:
+                        st.markdown("---")
+                        joined_invalid_df = pd.concat(all_invalid_details, ignore_index=True)
+                        st.error("All Invalid Products (Detailed View)")
+                        st.dataframe(joined_invalid_df)
+            
             else:
                 st.warning("No files to process!")
 
@@ -469,7 +518,8 @@ def main():
     4. Click "Process All Files" to analyze all uploaded files
     5. View individual results in respective file tabs
     6. View combined summary in Summary tab
-    7. Download the combined summary in your preferred format
+    7. View all detailed records in Joined Details tab
+    8. Download the results in your preferred format
     
     **Note:** Make sure your Excel files follow the expected format for each platform.
     """)

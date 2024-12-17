@@ -299,23 +299,65 @@ def main():
     if 'files' not in st.session_state:
         st.session_state.files = {}  # {file_key: {'file': file_obj, 'platform': platform}}
 
-    # [Previous upload section remains exactly the same until the Process button logic]
+    # File upload section with reorganized layout
+    st.header("Upload Files")
+    st.subheader("Select Platform")
+    platform = st.selectbox(
+    label="Choose your e-commerce platform",
+    options=['Shopee', 'Tokopedia', 'TikTok']
+    )
+    
+    uploaded_file = st.file_uploader(
+        "Browse files",
+        type=['xlsx']
+    )
+
+    # Show filename if file is uploaded
+    if uploaded_file:
+        st.text(uploaded_file.name)
+    
+    # Add file button
+    if st.button("Add File") and uploaded_file is not None and platform != 'Select Platform':
+        # Generate unique key for the file
+        file_key = f"{platform}_{uploaded_file.name}"
+        if file_key not in st.session_state.files:
+            # Store file in session state
+            file_data = uploaded_file.getvalue()
+            st.session_state.files[file_key] = {
+                'file': file_data,
+                'platform': platform,
+                'filename': uploaded_file.name
+            }
+            st.success(f"Added {uploaded_file.name} for {platform}")
+        else:
+            st.warning("This file has already been added!")
+
+    # Display added files
+    if st.session_state.files:
+        st.markdown("---")
+        st.subheader("Added Files")
+        for file_key, file_info in list(st.session_state.files.items()):
+            col1, col2 = st.columns([5, 1])
+            with col1:
+                st.text(f"{file_info['filename']} ({file_info['platform']})")
+            with col2:
+                if st.button("Remove", key=f"remove_{file_key}"):
+                    del st.session_state.files[file_key]
+                    st.rerun()
 
         # Process button
         if st.button("Process All Files"):
             if st.session_state.files:
                 all_valid_products = []
                 all_invalid_products = []
-                all_valid_details = []  # New list for detailed valid products
-                all_invalid_details = []  # New list for detailed invalid products
                 
-                # Create tabs - one Summary tab, one Joined Details tab, and one tab per file
-                tabs = ["Summary", "Joined Details"] + [f"{info['filename']}" for info in st.session_state.files.values()]
+                # Create tabs - one Summary tab and one tab per file
+                tabs = ["Summary"] + [f"{info['filename']}" for info in st.session_state.files.values()]
                 current_tabs = st.tabs(tabs)
                 
                 # Process each file and show in respective tabs
-                for idx, (file_key, file_info) in enumerate(st.session_state.files.items(), start=2):  # start=2 due to new tab
-                    with current_tabs[idx]:
+                for idx, (file_key, file_info) in enumerate(st.session_state.files.items(), start=1):
+                    with current_tabs[idx]:  # idx+1 because Summary is at index 0
                         st.subheader(f"Results for {file_info['filename']}")
                         
                         try:
@@ -329,26 +371,13 @@ def main():
                             valid_df, invalid_df = processor.process_file(file_obj)
                             
                             if not valid_df.empty:
-                                # Add to summary
                                 all_valid_products.append(valid_df)
                                 
-                                # Add to detailed view with filename
-                                detailed_df = valid_df.copy()
-                                detailed_df['DateToday'] = datetime.now().strftime('%Y-%m-%d')
-                                detailed_df['File Name'] = file_info['filename']
-                                all_valid_details.append(detailed_df)
-                            
-                            # Handle invalid products
+                            # Display invalid products if any
                             if not invalid_df.empty:
                                 st.error("Invalid Products Found:")
                                 st.dataframe(invalid_df)
                                 all_invalid_products.append(invalid_df)
-                                
-                                # Add to detailed invalid view with filename
-                                detailed_invalid_df = invalid_df.copy()
-                                detailed_invalid_df['DateToday'] = datetime.now().strftime('%Y-%m-%d')
-                                detailed_invalid_df['File Name'] = file_info['filename']
-                                all_invalid_details.append(detailed_invalid_df)
                             
                             # Display valid products
                             if not valid_df.empty:
@@ -358,52 +387,73 @@ def main():
                         except Exception as e:
                             st.error(f"Error processing {file_info['filename']}: {str(e)}")
                 
-                # Summary tab content (remains the same)
+                # Summary tab content
                 with current_tabs[0]:
                     if all_valid_products:
-                        # [Existing summary tab code remains exactly the same]
-                        pass
-                
-                # Joined Details tab content
-                with current_tabs[1]:
-                    st.subheader("Joined Details")
-                    
-                    # Display joined valid products
-                    if all_valid_details:
-                        joined_valid_df = pd.concat(all_valid_details, ignore_index=True)
-                        joined_valid_df = joined_valid_df[['DateToday', 'Kode SKU', 'Nama Produk', 'Jumlah', 'File Name']]
-                        st.success("All Valid Products (Detailed View)")
-                        st.dataframe(joined_valid_df)
+                        # Combine and group all valid products
+                        summary_df = pd.concat(all_valid_products)
+                        summary_df = summary_df.groupby(['Kode SKU', 'Nama Produk'])['Jumlah'].sum().reset_index()
+                        summary_df = summary_df.sort_values('Kode SKU')
                         
-                        # Add export buttons for joined details
-                        st.subheader("Export Joined Details")
-                        col1, col2 = st.columns(2)
+                        st.success("Summary of All Valid Products")
+                        st.dataframe(summary_df)
                         
+                        # Export options
+                        st.subheader("Export Options")
+                        
+                        # Create a container with custom spacing
+                        export_container = st.container()
+                        with export_container:
+                            # Use custom width ratios and add empty columns for spacing
+                            col1, space1, col2, space2, col3 = st.columns([1, 0.1, 1, 0.1, 1])
+                        
+                        # Export to Excel
                         with col1:
                             excel_buffer = io.BytesIO()
                             with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                                joined_valid_df.to_excel(writer, index=False, sheet_name='Valid Products')
-                                if all_invalid_details:
-                                    joined_invalid_df = pd.concat(all_invalid_details, ignore_index=True)
-                                    joined_invalid_df.to_excel(writer, index=False, sheet_name='Invalid Products')
-                            
+                                summary_df.to_excel(writer, index=False)
+                            excel_data = excel_buffer.getvalue()
                             st.download_button(
-                                label="Download Detailed Excel",
-                                data=excel_buffer.getvalue(),
-                                file_name="detailed_summary.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                label="Download Excel",
+                                data=excel_data,
+                                file_name="summary.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
                             )
+                        
+                        # Export to PDF A4
+                        with col2:
+                            pdf_buffer_a4 = create_pdf(summary_df.values.tolist(), 'A4')
+                            st.download_button(
+                                label="Download PDF (A4)",
+                                data=pdf_buffer_a4.getvalue(),
+                                file_name="summary_a4.pdf",
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
+                        
+                        # Export to PDF A6
+                        with col3:
+                            pdf_buffer_a6 = create_pdf(summary_df.values.tolist(), 'A6')
+                            st.download_button(
+                                label="Download PDF (A6)",
+                                data=pdf_buffer_a6.getvalue(),
+                                file_name="summary_a6.pdf",
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
+                        # Add divider with some spacing
+                        st.markdown("<br>", unsafe_allow_html=True)  # Add some space
+                        st.markdown("---")  # Add divider
+                        st.markdown("<br>", unsafe_allow_html=True)  # Add some space
                     
-                    # Display joined invalid products
-                    if all_invalid_details:
-                        st.markdown("---")
-                        joined_invalid_df = pd.concat(all_invalid_details, ignore_index=True)
-                        st.error("All Invalid Products (Detailed View)")
-                        st.dataframe(joined_invalid_df)
-
+                    if all_invalid_products:
+                        st.error("Summary of All Invalid Products")
+                        invalid_summary = pd.concat(all_invalid_products)
+                        st.dataframe(invalid_summary)
             else:
                 st.warning("No files to process!")
-                
+
         # Clear all button
         if st.button("Clear All Files"):
             st.session_state.files = {}
